@@ -1,0 +1,51 @@
+#cloud-config
+
+write_files:
+  - path: /etc/modules-load.d/kubernetes.conf
+    permissions: "0644"
+    content: |
+      overlay
+      br_netfilter
+
+  - path: /etc/sysctl.d/kubernetes.conf
+    permissions: "0644"
+    content: |
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
+
+  - path: /etc/profile.d/kubernetes.sh
+    permissions: "0644"
+    content: |
+      alias k=kubectl
+
+  - path: /etc/yum.repos.d/kubernetes.repo
+    permissions: "0644"
+    content: |
+      [kubernetes]
+      name=Kubernetes
+      baseurl=https://pkgs.k8s.io/core:/stable:/v1.37/rpm/
+      enabled=1
+      gpgcheck=1
+      gpgkey=https://pkgs.k8s.io/core:/stable:/v1.37/rpm/repodata/repomd.xml.key
+      exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+
+  - path: /etc/sysconfig/kubelet
+    permissions: "0644"
+    content: |
+      KUBELET_EXTRA_ARGS="--node-ip=${node_ip}"
+
+runcmd:
+  - setenforce 0
+  - sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+  - swapoff -a
+  - modprobe overlay
+  - modprobe br_netfilter
+  - sysctl --system
+  - dnf install -y containerd curl
+  - mkdir -p /etc/containerd
+  - containerd config default > /etc/containerd/config.toml
+  - sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+  - systemctl enable --now containerd
+  - dnf install -y kubelet kubeadm kubectl --setopt=disable_excludes=kubernetes
+  - systemctl enable kubelet

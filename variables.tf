@@ -20,3 +20,8 @@ variable "ssh_key_name" {
   description = "SSH key name"
   type        = string
 }
+
+variable "ssh_private_key_path" {
+  description = "Path to the private SSH key used for cluster bootstrap"
+  type        = string
+}

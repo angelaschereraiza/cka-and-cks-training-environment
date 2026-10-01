@@ -3,16 +3,12 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
-
-# Local variables
 terraform.tfvars
 *.auto.tfvars
 
 # Secrets
 .env
 .env.*
-
-# SSH keys
 *.pem
 *.key
 id_rsa

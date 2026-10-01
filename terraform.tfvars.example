@@ -1,4 +1,2 @@
-location     = "fsn1"
-server_type  = "cx23"
-image        = "fedora-42"
-ssh_key_name = "my-ssh-key"
+ssh_key_name         = "my-ssh-key"
+ssh_private_key_path = "~/.ssh/id_ed25519"
