@@ -1,2 +1,8 @@
-ssh_key_name         = "my-ssh-key"
-ssh_private_key_path = "~/.ssh/id_ed25519"
+# HCLOUD_TOKEN must be set in the shell; do not commit credentials.
+server_type = "cx23"
+image = "ubuntu-24.04"
+location = "fsn1"
+ssh_key_name = "training-key"
+ssh_private_key_path = "~/.ssh/training_key"
+ssh_public_key_path = "~/.ssh/training_key.pub"
+ssh_allowed_cidrs = ["203.0.113.10/32"]

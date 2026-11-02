@@ -1,27 +1,25 @@
-variable "location" {
-  description = "Cloud location"
-  type        = string
-  default     = "fsn1"
-}
-
 variable "server_type" {
-  description = "Server type used for Kubernetes nodes"
-  type        = string
-  default     = "cx23"
+  type = string
+  default = "cx23"
 }
-
 variable "image" {
-  description = "Operating system image"
-  type        = string
-  default     = "fedora-44"
+  type = string
+  default = "ubuntu-24.04"
 }
-
+variable "location" {
+  type = string
+  default = "fsn1"
+}
 variable "ssh_key_name" {
-  description = "SSH key name"
-  type        = string
+  type = string
 }
-
 variable "ssh_private_key_path" {
-  description = "Path to the private SSH key used for cluster bootstrap"
-  type        = string
+  type = string
+}
+variable "ssh_public_key_path" {
+  type = string
+}
+variable "ssh_allowed_cidrs" {
+  type = list(string)
+  default = ["0.0.0.0/0", "::/0"]
 }

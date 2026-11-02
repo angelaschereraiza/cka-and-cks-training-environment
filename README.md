@@ -1,37 +1,21 @@
-# CKA and CKS Training Environment
+# CKA and CKS training environment
 
-Disposable Kubernetes cluster for hands-on CKA and CKS practice.
+Terraform provisions three Ubuntu 24.04 nodes (one control plane, two workers) with containerd, kubeadm, Cilium, AppArmor, Seccomp, Falco (modern eBPF), auditd and ten preloaded security exercises.
 
-Terraform creates three Fedora nodes on a private network. Cloud-init installs the node prerequisites, then Terraform bootstraps Kubernetes with kubeadm and Cilium.
+## Setup
 
-## Cluster
+1. Register your public SSH key with your cloud account.
+2. Copy `terraform.tfvars.example` to `terraform.tfvars` and replace placeholders with your actual SSH key name, local key paths and trusted SSH source CIDR.
+3. Export `HCLOUD_TOKEN` in your shell (do not commit it).
+4. Run `terraform init`, `terraform validate`, `terraform plan`, then `terraform apply`.
+5. SSH to the control-plane IP as `student`; use `kubectl` or alias `k`.
 
-| Node | Private IP |
-| --- | --- |
-| k8s-control-1 | 10.10.0.10 |
-| k8s-worker-1 | 10.10.0.11 |
-| k8s-worker-2 | 10.10.0.12 |
+Exercises are installed under `/opt/cks/manifests/`; node security policies are under `/opt/cks/policies/`. Falco custom rule is installed in `/etc/falco/falco_rules.local.yaml` on each node. Check `sudo systemctl status falco-modern-bpf`.
 
-## Requirements
+## Existing servers
 
-- Terraform
-- SSH
-- A configured cloud API token
-- An SSH key registered with the cloud provider
+Changes to `cloud-init.yaml` do not rerun cloud-init on existing servers. Terraform may plan server replacement when `user_data` changes. Review `terraform plan` before applying, especially to preserve training progress.
 
-Create `terraform.tfvars` from the example and set your SSH key values.
+## Notes
 
-## Usage
-
-```bash
-terraform init
-terraform apply
-```
-
-Destroy the environment with:
-
-```bash
-terraform destroy
-```
-
-`terraform.tfvars` and Terraform state files are excluded from Git.
+The lab is intentionally insecure in selected workloads for training. Keep SSH ingress restricted. The sample `terraform.tfvars.example` contains placeholders, not valid credentials.

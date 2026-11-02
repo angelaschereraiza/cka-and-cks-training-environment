@@ -1,0 +1,527 @@
+#cloud-config
+package_update: true
+users:
+- default
+- name: student
+  groups: sudo
+  shell: /bin/bash
+  sudo:
+  - ALL=(ALL) NOPASSWD:ALL
+  ssh_authorized_keys:
+  - ${ssh_public_key}
+disable_root: true
+ssh_pwauth: false
+write_files:
+- path: /etc/modules-load.d/kubernetes.conf
+  permissions: '0644'
+  content: |
+    overlay
+    br_netfilter
+- path: /etc/sysctl.d/kubernetes.conf
+  permissions: '0644'
+  content: |
+    net.bridge.bridge-nf-call-iptables = 1
+    net.bridge.bridge-nf-call-ip6tables = 1
+    net.ipv4.ip_forward = 1
+- path: /etc/profile.d/kubernetes.sh
+  permissions: '0644'
+  content: |
+    export EDITOR=vim
+    export VISUAL=vim
+    export KUBE_EDITOR=vim
+- path: /etc/profile.d/cks-alias.sh
+  permissions: '0644'
+  content: |
+    alias k=kubectl
+- path: /etc/crictl.yaml
+  permissions: '0644'
+  content: |
+    runtime-endpoint: unix:///run/containerd/containerd.sock
+    image-endpoint: unix:///run/containerd/containerd.sock
+    timeout: 10
+- path: /opt/cks/manifests/01-network.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: production
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: database
+      namespace: production
+    spec:
+      replicas: 1
+      selector:
+        matchLabels: {app: database}
+      template:
+        metadata:
+          labels: {app: database}
+        spec:
+          containers:
+            - name: postgres
+              image: postgres:16-alpine
+              env:
+                - name: POSTGRES_PASSWORD
+                  value: cks-lab-only
+              ports:
+                - containerPort: 5432
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: backend
+      namespace: production
+    spec:
+      replicas: 1
+      selector:
+        matchLabels: {role: backend}
+      template:
+        metadata:
+          labels: {role: backend}
+        spec:
+          containers:
+            - name: client
+              image: postgres:16-alpine
+              command: ["sh", "-c", "sleep infinity"]
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: unauthorized-client
+      namespace: production
+    spec:
+      replicas: 1
+      selector:
+        matchLabels: {role: frontend}
+      template:
+        metadata:
+          labels: {role: frontend}
+        spec:
+          containers:
+            - name: client
+              image: postgres:16-alpine
+              command: ["sh", "-c", "sleep infinity"]
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: database
+      namespace: production
+    spec:
+      selector: {app: database}
+      ports:
+        - port: 5432
+          targetPort: 5432
+- path: /opt/cks/manifests/02-rbac.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-rbac
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: report-reader
+      namespace: cks-rbac
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: report-access
+      namespace: cks-rbac
+    rules:
+      - apiGroups: [""]
+        resources: ["configmaps", "secrets", "pods"]
+        verbs: ["get", "list", "watch", "create", "delete"]
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: report-binding
+      namespace: cks-rbac
+    subjects:
+      - kind: ServiceAccount
+        name: report-reader
+        namespace: cks-rbac
+    roleRef:
+      kind: Role
+      name: report-access
+      apiGroup: rbac.authorization.k8s.io
+    ---
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: daily-report
+      namespace: cks-rbac
+    data:
+      report: "CKS lab report"
+- path: /opt/cks/manifests/03-pod-security.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-pod-security
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: insecure-web
+      namespace: cks-pod-security
+    spec:
+      replicas: 1
+      selector:
+        matchLabels: {app: insecure-web}
+      template:
+        metadata:
+          labels: {app: insecure-web}
+        spec:
+          containers:
+            - name: web
+              image: nginx:1.27-alpine
+              securityContext:
+                allowPrivilegeEscalation: true
+                runAsUser: 0
+                capabilities:
+                  add: ["NET_RAW"]
+- path: /opt/cks/manifests/04-seccomp.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-seccomp
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: seccomp-target
+      namespace: cks-seccomp
+    spec:
+      containers:
+        - name: target
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 360000"]
+- path: /opt/cks/manifests/05-apparmor.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-apparmor
+    ---
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: apparmor-instructions
+      namespace: cks-apparmor
+    data:
+      instructions: "Use an AppArmor-enabled node. Load profile cks-deny-write on that host and configure securityContext.appArmorProfile."
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: apparmor-target
+      namespace: cks-apparmor
+    spec:
+      containers:
+        - name: target
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 360000"]
+- path: /opt/cks/manifests/06-falco.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-falco
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: runtime-target
+      namespace: cks-falco
+    spec:
+      containers:
+        - name: target
+          image: busybox:1.36
+          command: ["sh", "-c", "sleep 360000"]
+- path: /opt/cks/manifests/07-supply-chain.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-supply-chain
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: legacy-web
+      namespace: cks-supply-chain
+    spec:
+      replicas: 1
+      selector:
+        matchLabels: {app: legacy-web}
+      template:
+        metadata:
+          labels: {app: legacy-web}
+        spec:
+          containers:
+            - name: web
+              image: nginx:1.19
+              imagePullPolicy: IfNotPresent
+- path: /opt/cks/manifests/08-audit.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-audit
+    ---
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: audit-exercise
+      namespace: cks-audit
+    data:
+      objective: "Configure Kubernetes API audit policy on the control plane and inspect generated events."
+- path: /opt/cks/manifests/09-hardening.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-hardening
+    ---
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: hardening-exercise
+      namespace: cks-hardening
+    data:
+      objective: "Inspect kubelet and control-plane security settings; document and correct weaknesses."
+- path: /opt/cks/manifests/10-incident.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-incident
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: application
+      namespace: cks-incident
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: application-role
+      namespace: cks-incident
+    rules:
+      - apiGroups: [""]
+        resources: ["pods", "secrets", "configmaps"]
+        verbs: ["get", "list", "watch"]
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: application-binding
+      namespace: cks-incident
+    subjects:
+      - kind: ServiceAccount
+        name: application
+        namespace: cks-incident
+    roleRef:
+      kind: Role
+      name: application-role
+      apiGroup: rbac.authorization.k8s.io
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: incident-app
+      namespace: cks-incident
+    spec:
+      replicas: 1
+      selector:
+        matchLabels: {app: incident-app}
+      template:
+        metadata:
+          labels: {app: incident-app}
+        spec:
+          serviceAccountName: application
+          containers:
+            - name: app
+              image: nginx:1.27-alpine
+              securityContext:
+                allowPrivilegeEscalation: true
+                runAsUser: 0
+- path: /opt/cks/policies/08-audit-policy.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: audit.k8s.io/v1
+    kind: Policy
+    rules:
+      - level: Metadata
+        resources:
+          - group: ""
+            resources: ["secrets", "configmaps"]
+      - level: None
+        users: ["system:kube-proxy"]
+      - level: Metadata
+- path: /opt/cks/policies/04-seccomp-deny-chmod.json
+  permissions: '0644'
+  content: |
+    {
+      "defaultAction": "SCMP_ACT_ALLOW",
+      "syscalls": [
+        {
+          "names": [
+            "chmod",
+            "fchmod",
+            "fchmodat"
+          ],
+          "action": "SCMP_ACT_ERRNO"
+        }
+      ]
+    }
+- path: /opt/cks/policies/05-apparmor-profile
+  permissions: '0644'
+  content: |
+    #include <tunables/global>
+    profile cks-deny-write flags=(attach_disconnected,mediate_deleted) {
+      #include <abstractions/base>
+      file,
+      deny /tmp/cks-denied rw,
+    }
+- path: /opt/cks/policies/06-falco-custom-rules.yaml
+  permissions: '0644'
+  content: |
+    - rule: CKS Shell Spawned In Container
+      desc: Detect an interactive shell spawned in a container
+      condition: container and spawned_process and proc.name in (bash, sh)
+      output: "CKS shell in container (container=%container.id command=%proc.cmdline)"
+      priority: WARNING
+      tags: [cks, container]
+- path: /opt/cks/README.txt
+  permissions: '0644'
+  content: |
+    CKS TRAINING LAB
+    Kubernetes manifests: /opt/cks/manifests/
+    Node-level training files: /opt/cks/policies/
+    Control-plane provisioning: systemctl status cks-lab
+    Control-plane provisioning logs: journalctl -u cks-lab -f
+    Falco logs: journalctl -u falco-modern-bpf
+    AppArmor: AppArmor profile must be loaded on the scheduled node.
+    Note: Audit policy is staged but NOT automatically enabled on the API server.
+    The lab service runs only on a host whose hostname begins with k8s-control.
+    It waits for kubeadm and Cilium to become ready.
+
+    Run lab service only on control plane. AppArmor and host hardening require additional node setup.
+- path: /usr/local/sbin/cks-node-install.sh
+  permissions: '0755'
+  content: |
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    exec > >(tee -a /var/log/cks-provision.log) 2>&1
+    trap 'echo "CKS provisioning failed at line $LINENO: $BASH_COMMAND" >&2' ERR
+    export DEBIAN_FRONTEND=noninteractive
+    swapoff -a
+    sed -i.bak -E '/^[^#].*[[:space:]]swap[[:space:]]/s/^/#/' /etc/fstab
+    modprobe overlay
+    modprobe br_netfilter
+    sysctl --system
+    apt-get update
+    apt-get install -y ca-certificates curl gnupg apt-transport-https containerd apparmor apparmor-utils auditd jq git vim tar gzip unzip tcpdump iproute2 iptables nftables procps util-linux findutils dnsutils iputils-ping openssl strace lsof libseccomp2
+    mkdir -p /etc/containerd
+    containerd config default > /etc/containerd/config.toml
+    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+    systemctl enable --now containerd
+    systemctl restart containerd
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL 'https://pkgs.k8s.io/core:/stable:/v1.36/deb/Release.key' | gpg --batch --yes --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    printf '%s\n' 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.36/deb/ /' > /etc/apt/sources.list.d/kubernetes.list
+    apt-get update
+    # Keep the image's existing dpkg configuration non-interactively.
+    apt-get install -y -o Dpkg::Options::="--force-confold" kubelet kubeadm kubectl
+    # Write kubelet overrides only after dpkg has installed its conffiles.
+    printf '%s\n' 'KUBELET_EXTRA_ARGS="--node-ip=${node_ip}"' > /etc/default/kubelet
+    apt-mark hold kubelet kubeadm kubectl
+    systemctl enable kubelet
+    systemctl enable --now apparmor
+    systemctl enable --now auditd
+    mkdir -p /var/lib/kubelet/seccomp/profiles /etc/apparmor.d /opt/cks/logs
+    cp /opt/cks/policies/04-seccomp-deny-chmod.json /var/lib/kubelet/seccomp/profiles/cks-deny-chmod.json
+    cp /opt/cks/policies/05-apparmor-profile /etc/apparmor.d/cks-deny-write
+    apparmor_parser -r /etc/apparmor.d/cks-deny-write
+    # Falco is mandatory for the runtime-security exercises.
+    install -m 0755 -d /usr/share/keyrings
+    curl -fsSL https://falco.org/repo/falcosecurity-packages.asc | gpg --batch --yes --dearmor -o /usr/share/keyrings/falco-archive-keyring.gpg
+    chmod 0644 /usr/share/keyrings/falco-archive-keyring.gpg
+    printf '%s\n' 'deb [signed-by=/usr/share/keyrings/falco-archive-keyring.gpg] https://download.falco.org/packages/deb stable main' > /etc/apt/sources.list.d/falcosecurity.list
+    apt-get update
+    FALCO_FRONTEND=noninteractive FALCO_DRIVER_CHOICE=modern_ebpf FALCOCTL_ENABLED=no apt-get install -y -o Dpkg::Options::="--force-confold" falco
+    # Preserve the exercise rules and load them alongside Falco's default rules.
+    touch /etc/falco/falco_rules.local.yaml
+    if ! grep -Fq -- '- rule: CKS Shell Spawned In Container' /etc/falco/falco_rules.local.yaml; then
+      printf '\n' >> /etc/falco/falco_rules.local.yaml
+      cat /opt/cks/policies/06-falco-custom-rules.yaml >> /etc/falco/falco_rules.local.yaml
+    fi
+    systemctl daemon-reload
+    systemctl enable --now falco-modern-bpf.service
+    systemctl is-active --quiet falco-modern-bpf.service
+    command -v falco
+    falco --version
+    systemctl daemon-reload
+    if [[ $(hostname -s) == k8s-control-1 ]]; then
+      systemctl enable cks-lab.service
+    fi
+    echo 'CKS node provisioning completed.'
+- path: /usr/local/sbin/cks-lab-apply.sh
+  permissions: '0755'
+  content: |
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    export KUBECONFIG=/etc/kubernetes/admin.conf
+    until test -s "$KUBECONFIG"; do sleep 10; done
+    until kubectl --request-timeout=5s get nodes >/dev/null 2>&1; do sleep 10; done
+    until kubectl -n kube-system get ds cilium >/dev/null 2>&1; do sleep 10; done
+    kubectl -n kube-system rollout status ds/cilium --timeout=10m
+    kubectl apply -f /opt/cks/manifests/
+- path: /etc/systemd/system/cks-lab.service
+  permissions: '0644'
+  content: |
+    [Unit]
+    Description=Provision CKS practice resources
+    After=network-online.target
+    Wants=network-online.target
+    [Service]
+    Type=oneshot
+    ExecStart=/usr/local/sbin/cks-lab-apply.sh
+    RemainAfterExit=yes
+    TimeoutStartSec=0
+    [Install]
+    WantedBy=multi-user.target
+- path: /opt/cks/check-security.sh
+  permissions: '0755'
+  content: |
+    #!/usr/bin/env bash
+    set +e
+    hostname
+    kubelet --version
+    containerd --version
+    cat /sys/kernel/security/lsm
+    aa-status
+    systemctl is-active apparmor auditd containerd
+runcmd:
+- - bash
+  - /usr/local/sbin/cks-node-install.sh
