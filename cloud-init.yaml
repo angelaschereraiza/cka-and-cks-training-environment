@@ -405,12 +405,81 @@ write_files:
 - path: /opt/cks/policies/06-falco-custom-rules.yaml
   permissions: '0644'
   content: |
-    - rule: CKS Shell Spawned In Container
-      desc: Detect an interactive shell spawned in a container
-      condition: container and spawned_process and proc.name in (bash, sh)
-      output: "CKS shell in container (container=%container.id command=%proc.cmdline)"
-      priority: WARNING
-      tags: [cks, container]
+    # Add your CKS Falco rules here. Do not preinstall solutions.
+- path: /opt/cks/manifests/11-falco-exercises.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-falco-lab
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: suspicious-app
+      namespace: cks-falco-lab
+    spec:
+      containers:
+      - name: toolbox
+        image: alpine:3.21
+        command: ["sh", "-c", "sleep 360000"]
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: trusted-maintenance
+      namespace: cks-falco-lab
+    spec:
+      containers:
+      - name: toolbox
+        image: alpine:3.21
+        command: ["sh", "-c", "sleep 360000"]
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: network-client
+      namespace: cks-falco-lab
+    spec:
+      containers:
+      - name: toolbox
+        image: alpine:3.21
+        command: ["sh", "-c", "sleep 360000"]
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: privileged-target
+      namespace: cks-falco-lab
+    spec:
+      containers:
+      - name: toolbox
+        image: alpine:3.21
+        command: ["sh", "-c", "sleep 360000"]
+        securityContext:
+          privileged: true
+    ---
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: incident-evidence
+      namespace: cks-falco-lab
+    data:
+      report.txt: |
+        Incident simulation: the suspicious-app pod may execute a shell,
+        inspect /etc/shadow, and modify /tmp/cks-marker.
+        Correlate Falco events with the Kubernetes pod and node.
+- path: /opt/cks/falco/README.txt
+  permissions: '0644'
+  content: |
+    Falco CKS practice environment. Exercises are supplied by the trainer.
+    Edit /etc/falco/falco_rules.local.yaml on the node running the target pod.
+    Use sudo falco --validate /etc/falco/falco_rules.local.yaml
+    Then sudo systemctl restart falco-modern-bpf.service
+    Check sudo journalctl -u falco-modern-bpf.service -f
+    Check pod placement with kubectl -n cks-falco-lab get pods -o wide
+    Rule files are intentionally NOT solved or pre-populated.
 - path: /opt/cks/README.txt
   permissions: '0644'
   content: |
@@ -472,10 +541,8 @@ write_files:
     FALCO_FRONTEND=noninteractive FALCO_DRIVER_CHOICE=modern_ebpf FALCOCTL_ENABLED=no apt-get install -y -o Dpkg::Options::="--force-confold" falco
     # Preserve the exercise rules and load them alongside Falco's default rules.
     touch /etc/falco/falco_rules.local.yaml
-    if ! grep -Fq -- '- rule: CKS Shell Spawned In Container' /etc/falco/falco_rules.local.yaml; then
-      printf '\n' >> /etc/falco/falco_rules.local.yaml
-      cat /opt/cks/policies/06-falco-custom-rules.yaml >> /etc/falco/falco_rules.local.yaml
-    fi
+    # Leave Falco local rules empty for the student to solve.
+    # A separate training directory contains only scenario data.
     systemctl daemon-reload
     systemctl enable --now falco-modern-bpf.service
     systemctl is-active --quiet falco-modern-bpf.service

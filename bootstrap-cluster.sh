@@ -63,7 +63,7 @@ for host in "$CONTROL" "$WORKER1" "$WORKER2"; do
   wait_ssh "$host"
   echo "Waiting for cloud-init: $host"
   root "$host" 'cloud-init status --wait' || { root "$host" 'tail -100 /var/log/cks-provision.log || true'; exit 1; }
-  root "$host" 'test -f /var/log/cks-provision.log && command -v kubeadm && systemctl is-active --quiet containerd && systemctl is-active --quiet falco-modern-bpf.service && test -s /etc/falco/falco_rules.local.yaml'
+  root "$host" 'test -f /var/log/cks-provision.log && command -v kubeadm && systemctl is-active --quiet containerd && systemctl is-active --quiet falco-modern-bpf.service && test -f /etc/falco/falco_rules.local.yaml'
 done
 for entry in "$CONTROL:$CONTROL_PRIVATE_IP:$CONTROL_MAC" "$WORKER1:$WORKER1_PRIVATE_IP:$WORKER1_MAC" "$WORKER2:$WORKER2_PRIVATE_IP:$WORKER2_MAC"; do
   host=${entry%%:*}; network=${entry#*:}; expected=${network%%:*}; mac=${network#*:}
@@ -88,5 +88,5 @@ done
 root "$CONTROL" 'KUBECONFIG=/etc/kubernetes/admin.conf kubectl -n kube-system rollout status ds/cilium --timeout=10m'
 root "$CONTROL" 'KUBECONFIG=/etc/kubernetes/admin.conf kubectl wait --for=condition=Ready nodes --all --timeout=10m'
 root "$CONTROL" 'systemctl start cks-lab.service && systemctl is-active cks-lab.service'
-run "$CONTROL" 'kubectl get nodes -o wide; kubectl get pods -A'
+run "$CONTROL" 'kubectl get nodes -o wide; kubectl -n cks-falco-lab get pods -o wide; kubectl get pods -A'
 echo 'CKS cluster bootstrap completed.'
