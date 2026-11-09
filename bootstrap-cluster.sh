@@ -65,6 +65,7 @@ for host in "$CONTROL" "$WORKER1" "$WORKER2"; do
   root "$host" 'cloud-init status --wait' || { root "$host" 'tail -100 /var/log/cks-provision.log || true'; exit 1; }
   root "$host" 'test -f /var/log/cks-provision.log && command -v kubeadm && command -v crictl && systemctl is-active --quiet containerd && systemctl is-active --quiet falco-modern-bpf.service && test -f /etc/falco/falco_rules.local.yaml'
 done
+root "$CONTROL" 'command -v etcdctl && etcdctl version'
 for entry in "$CONTROL:$CONTROL_PRIVATE_IP:$CONTROL_MAC" "$WORKER1:$WORKER1_PRIVATE_IP:$WORKER1_MAC" "$WORKER2:$WORKER2_PRIVATE_IP:$WORKER2_MAC"; do
   host=${entry%%:*}; network=${entry#*:}; expected=${network%%:*}; mac=${network#*:}
   configure_private_network "$host" "$expected" "$mac"
@@ -73,6 +74,24 @@ done
 if ! root "$CONTROL" 'test -s /etc/kubernetes/admin.conf'; then
   root "$CONTROL" 'kubeadm init --apiserver-advertise-address=10.10.0.10 --pod-network-cidr=10.244.0.0/16'
 fi
+echo 'Waiting for etcd...'
+
+root "$CONTROL" '
+  for attempt in $(seq 1 30); do
+    if ETCDCTL_API=3 etcdctl \
+      --endpoints=https://127.0.0.1:2379 \
+      --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+      --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+      --key=/etc/kubernetes/pki/etcd/healthcheck-client.key \
+      endpoint health >/dev/null 2>&1; then
+      echo "etcd is healthy"
+      exit 0
+    fi
+    sleep 2
+  done
+  echo "etcd health check failed" >&2
+  exit 1
+'
 root "$CONTROL" 'install -d -m 0700 -o student -g student /home/student/.kube; cp /etc/kubernetes/admin.conf /home/student/.kube/config; chown student:student /home/student/.kube/config; chmod 600 /home/student/.kube/config'
 for host in "$CONTROL" "$WORKER1" "$WORKER2"; do
   wait_for_api_from_node "$host"

@@ -529,6 +529,11 @@ write_files:
     apt-get update
     # Keep the image's existing dpkg configuration non-interactively.
     apt-get install -y -o Dpkg::Options::="--force-confold" kubelet kubeadm kubectl
+    # Install etcdctl on control plane for CKS exercises
+    if [[ $(hostname -s) == k8s-control-1 ]]; then
+      apt-get install -y etcd-client
+      etcdctl version
+    fi
     # Write kubelet overrides only after dpkg has installed its conffiles.
     printf '%s\n' 'KUBELET_EXTRA_ARGS="--node-ip=${node_ip}"' > /etc/default/kubelet
     apt-mark hold kubelet kubeadm kubectl
