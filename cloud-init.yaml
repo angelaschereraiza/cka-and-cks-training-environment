@@ -510,6 +510,13 @@ write_files:
     sysctl --system
     apt-get update
     apt-get install -y ca-certificates curl gnupg apt-transport-https containerd apparmor apparmor-utils auditd jq git vim tar gzip unzip tcpdump iproute2 iptables nftables procps util-linux findutils dnsutils iputils-ping openssl strace lsof libseccomp2
+    CRICTL_VERSION="v1.36.0"
+    ARCH="$(dpkg --print-architecture)"
+    curl -fsSLo /tmp/crictl.tar.gz "https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-${ARCH}.tar.gz"
+    tar -xzf /tmp/crictl.tar.gz -C /usr/local/bin crictl
+    chmod 755 /usr/local/bin/crictl
+    rm /tmp/crictl.tar.gz
+    crictl --version
     mkdir -p /etc/containerd
     containerd config default > /etc/containerd/config.toml
     sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
