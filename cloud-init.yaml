@@ -560,6 +560,14 @@ write_files:
     systemctl is-active --quiet falco-modern-bpf.service
     command -v falco
     falco --version
+    # Install Trivy
+    install -m 0755 -d /usr/share/keyrings
+    curl -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --batch --yes --dearmor -o /usr/share/keyrings/trivy.gpg
+    chmod 0644 /usr/share/keyrings/trivy.gpg
+    printf '%s\n' 'deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main' > /etc/apt/sources.list.d/trivy.list
+    apt-get update
+    apt-get install -y trivy
+    trivy --version
     systemctl daemon-reload
     if [[ $(hostname -s) == k8s-control-1 ]]; then
       systemctl enable cks-lab.service
