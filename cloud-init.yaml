@@ -221,7 +221,7 @@ write_files:
       name: apparmor-instructions
       namespace: cks-apparmor
     data:
-      instructions: "Use an AppArmor-enabled node. Load profile cks-deny-write on that host and configure securityContext.appArmorProfile."
+      lab: "apparmor"
     ---
     apiVersion: v1
     kind: Pod
@@ -290,7 +290,7 @@ write_files:
       name: audit-exercise
       namespace: cks-audit
     data:
-      objective: "Configure Kubernetes API audit policy on the control plane and inspect generated events."
+      lab: "audit"
 - path: /opt/cks/manifests/09-hardening.yaml
   permissions: '0644'
   content: |
@@ -305,7 +305,7 @@ write_files:
       name: hardening-exercise
       namespace: cks-hardening
     data:
-      objective: "Inspect kubelet and control-plane security settings; document and correct weaknesses."
+      lab: "hardening"
 - path: /opt/cks/manifests/10-incident.yaml
   permissions: '0644'
   content: |
@@ -405,7 +405,7 @@ write_files:
 - path: /opt/cks/policies/06-falco-custom-rules.yaml
   permissions: '0644'
   content: |
-    # Add your CKS Falco rules here. Do not preinstall solutions.
+    # Reserved for local Falco rules.
 - path: /opt/cks/manifests/11-falco-exercises.yaml
   permissions: '0644'
   content: |
@@ -466,35 +466,227 @@ write_files:
       name: incident-evidence
       namespace: cks-falco-lab
     data:
-      report.txt: |
-        Incident simulation: the suspicious-app pod may execute a shell,
-        inspect /etc/shadow, and modify /tmp/cks-marker.
-        Correlate Falco events with the Kubernetes pod and node.
+      report.txt: "Incident test data"
 - path: /opt/cks/falco/README.txt
   permissions: '0644'
   content: |
-    Falco CKS practice environment. Exercises are supplied by the trainer.
-    Edit /etc/falco/falco_rules.local.yaml on the node running the target pod.
-    Use sudo falco --validate /etc/falco/falco_rules.local.yaml
-    Then sudo systemctl restart falco-modern-bpf.service
-    Check sudo journalctl -u falco-modern-bpf.service -f
-    Check pod placement with kubectl -n cks-falco-lab get pods -o wide
-    Rule files are intentionally NOT solved or pre-populated.
+    Falco configuration: /etc/falco/
+    Falco service: falco-modern-bpf.service
 - path: /opt/cks/README.txt
   permissions: '0644'
   content: |
     CKS TRAINING LAB
     Kubernetes manifests: /opt/cks/manifests/
-    Node-level training files: /opt/cks/policies/
-    Control-plane provisioning: systemctl status cks-lab
-    Control-plane provisioning logs: journalctl -u cks-lab -f
-    Falco logs: journalctl -u falco-modern-bpf
-    AppArmor: AppArmor profile must be loaded on the scheduled node.
-    Note: Audit policy is staged but NOT automatically enabled on the API server.
-    The lab service runs only on a host whose hostname begins with k8s-control.
-    It waits for kubeadm and Cilium to become ready.
-
-    Run lab service only on control plane. AppArmor and host hardening require additional node setup.
+    Node-level configuration: /opt/cks/policies/
+    Additional lab inputs: /opt/cks/exercises/
+    Provisioning service: cks-lab.service
+    Provisioning logs: /var/log/cks-provision.log
+- path: /opt/cks/manifests/12-psa-training.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-psa-advanced
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: legacy-api
+      namespace: cks-psa-advanced
+    spec:
+      replicas: 1
+      selector:
+        matchLabels: {app: legacy-api}
+      template:
+        metadata:
+          labels: {app: legacy-api}
+        spec:
+          containers:
+          - name: api
+            image: alpine:3.21
+            command: ["sh", "-c", "sleep 360000"]
+            securityContext:
+              privileged: true
+              runAsUser: 0
+              allowPrivilegeEscalation: true
+              capabilities:
+                add: ["NET_RAW"]
+- path: /opt/cks/manifests/13-cross-namespace-network.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-net-data
+      labels:
+        environment: internal
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-net-trusted
+      labels:
+        access: trusted
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-net-untrusted
+      labels:
+        access: untrusted
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: datastore
+      namespace: cks-net-data
+    spec:
+      replicas: 1
+      selector:
+        matchLabels: {app: datastore}
+      template:
+        metadata:
+          labels: {app: datastore}
+        spec:
+          containers:
+          - name: postgres
+            image: postgres:16-alpine
+            env:
+            - name: POSTGRES_PASSWORD
+              value: cks-training-only
+            ports:
+            - containerPort: 5432
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: datastore
+      namespace: cks-net-data
+    spec:
+      selector: {app: datastore}
+      ports:
+      - name: postgres
+        protocol: TCP
+        port: 5432
+        targetPort: 5432
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: trusted-client
+      namespace: cks-net-trusted
+    spec:
+      replicas: 1
+      selector:
+        matchLabels: {role: app-client}
+      template:
+        metadata:
+          labels: {role: app-client}
+        spec:
+          containers:
+          - name: client
+            image: postgres:16-alpine
+            command: ["sh", "-c", "sleep infinity"]
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: untrusted-client
+      namespace: cks-net-untrusted
+    spec:
+      replicas: 1
+      selector:
+        matchLabels: {role: app-client}
+      template:
+        metadata:
+          labels: {role: app-client}
+        spec:
+          containers:
+          - name: client
+            image: postgres:16-alpine
+            command: ["sh", "-c", "sleep infinity"]
+- path: /opt/cks/manifests/14-token-hardening.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cks-service-account
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: log-reader
+      namespace: cks-service-account
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: log-access
+      namespace: cks-service-account
+    rules:
+    - apiGroups: [""]
+      resources: ["pods", "pods/log", "secrets"]
+      verbs: ["get", "list", "watch"]
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: log-reader-binding
+      namespace: cks-service-account
+    subjects:
+    - kind: ServiceAccount
+      name: log-reader
+      namespace: cks-service-account
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: Role
+      name: log-access
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: token-target
+      namespace: cks-service-account
+    spec:
+      serviceAccountName: log-reader
+      containers:
+      - name: target
+        image: busybox:1.36
+        command: ["sh", "-c", "sleep 360000"]
+- path: /opt/cks/exercises/kubeadm-upgrade/upgrade-broken.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: kubeadm.k8s.io/v1beta3
+    kind: UpgradeConfiguration
+    plan:
+      kubernetesVersion: v1.37.0
+      ignorePreflightErrors: "Swap"
+    apply:
+      kubernetesVersion: v1.37.0
+      dryRun: "true"
+- path: /opt/cks/exercises/trivy/misconfigured-pod.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: insecure-build-agent
+      namespace: cks-pod-security
+    spec:
+      hostPID: true
+      hostNetwork: true
+      containers:
+      - name: agent
+        image: alpine:3.21
+        command: ["sh", "-c", "sleep 360000"]
+        securityContext:
+          privileged: true
+          allowPrivilegeEscalation: true
+          runAsUser: 0
+          capabilities:
+            add: ["NET_ADMIN", "NET_RAW"]
 - path: /usr/local/sbin/cks-node-install.sh
   permissions: '0755'
   content: |
@@ -575,6 +767,7 @@ write_files:
     systemctl daemon-reload
     if [[ $(hostname -s) == k8s-control-1 ]]; then
       systemctl enable cks-lab.service
+      systemctl --no-block start cks-lab.service
     fi
     echo 'CKS node provisioning completed.'
 - path: /usr/local/sbin/cks-lab-apply.sh
