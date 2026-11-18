@@ -687,6 +687,647 @@ write_files:
           runAsUser: 0
           capabilities:
             add: ["NET_ADMIN", "NET_RAW"]
+- path: /opt/cka/manifests/00-namespaces.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cka-apps
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cka-config
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cka-network
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cka-scheduling
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cka-storage
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cka-maintenance
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cka-troubleshooting
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cka-resources
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cka-rbac
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: cka-custom
+- path: /opt/cka/manifests/01-apps.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: rollout-web
+      namespace: cka-apps
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: rollout-web
+      template:
+        metadata:
+          labels:
+            app: rollout-web
+        spec:
+          containers:
+          - name: web
+            image: nginx:1.27-alpine
+            ports:
+            - name: http
+              containerPort: 80
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: health-web
+      namespace: cka-apps
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: health-web
+      template:
+        metadata:
+          labels:
+            app: health-web
+        spec:
+          containers:
+          - name: web
+            image: nginx:1.27-alpine
+            ports:
+            - name: http
+              containerPort: 80
+            readinessProbe:
+              httpGet:
+                path: /
+                port: 8080
+              initialDelaySeconds: 2
+              periodSeconds: 5
+    ---
+    apiVersion: batch/v1
+    kind: CronJob
+    metadata:
+      name: cleanup
+      namespace: cka-apps
+    spec:
+      schedule: '*/30 * * * *'
+      suspend: true
+      jobTemplate:
+        spec:
+          template:
+            spec:
+              restartPolicy: OnFailure
+              containers:
+              - name: cleanup
+                image: busybox:1.36
+                command: ['sh', '-c', 'date; echo cleanup complete']
+- path: /opt/cka/manifests/02-config.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: service-settings
+      namespace: cka-config
+    data:
+      APP_MODE: production
+      APP_COLOR: blue
+    ---
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: service-credentials
+      namespace: cka-config
+    type: Opaque
+    stringData:
+      API_KEY: cka-lab-only
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: configured-api
+      namespace: cka-config
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: configured-api
+      template:
+        metadata:
+          labels:
+            app: configured-api
+        spec:
+          containers:
+          - name: api
+            image: nginx:1.27-alpine
+            envFrom:
+            - configMapRef:
+                name: service-setting
+            ports:
+            - containerPort: 80
+- path: /opt/cka/manifests/03-network.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: storefront
+      namespace: cka-network
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: storefront
+      template:
+        metadata:
+          labels:
+            app: storefront
+        spec:
+          containers:
+          - name: web
+            image: nginx:1.27-alpine
+            ports:
+            - containerPort: 80
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: storefront-svc
+      namespace: cka-network
+    spec:
+      type: ClusterIP
+      selector:
+        app: storefront-old
+      ports:
+      - name: http
+        protocol: TCP
+        port: 8080
+        targetPort: 80
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: network-client
+      namespace: cka-network
+      labels:
+        role: client
+    spec:
+      containers:
+      - name: client
+        image: busybox:1.36
+        command: ['sh', '-c', 'sleep 360000']
+- path: /opt/cka/manifests/04-scheduling.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: placement-app
+      namespace: cka-scheduling
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: placement-app
+      template:
+        metadata:
+          labels:
+            app: placement-app
+        spec:
+          nodeSelector:
+            cka.lab/zone: central
+          containers:
+          - name: app
+            image: nginx:1.27-alpine
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: scheduling-web
+      namespace: cka-scheduling
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: scheduling-web
+      template:
+        metadata:
+          labels:
+            app: scheduling-web
+        spec:
+          containers:
+          - name: web
+            image: nginx:1.27-alpine
+- path: /opt/cka/manifests/05-maintenance.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: maintenance-web
+      namespace: cka-maintenance
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: maintenance-web
+      template:
+        metadata:
+          labels:
+            app: maintenance-web
+        spec:
+          containers:
+          - name: web
+            image: nginx:1.27-alpine
+    ---
+    apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+      name: maintenance-budget
+      namespace: cka-maintenance
+    spec:
+      minAvailable: 3
+      selector:
+        matchLabels:
+          app: maintenance-web
+- path: /opt/cka/manifests/06-troubleshooting.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: image-issue
+      namespace: cka-troubleshooting
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: image-issue
+      template:
+        metadata:
+          labels:
+            app: image-issue
+        spec:
+          containers:
+          - name: web
+            image: nginx:1.27-alpinee
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: crash-issue
+      namespace: cka-troubleshooting
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: crash-issue
+      template:
+        metadata:
+          labels:
+            app: crash-issue
+        spec:
+          containers:
+          - name: worker
+            image: busybox:1.36
+            command: ['sh', '-c', 'echo worker booted; exit 1']
+- path: /opt/cka/manifests/07-resources.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: ResourceQuota
+    metadata:
+      name: namespace-quota
+      namespace: cka-resources
+    spec:
+      hard:
+        pods: '3'
+        requests.cpu: '500m'
+        requests.memory: 512Mi
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: quota-web
+      namespace: cka-resources
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: quota-web
+      template:
+        metadata:
+          labels:
+            app: quota-web
+        spec:
+          containers:
+          - name: web
+            image: nginx:1.27-alpine
+            resources:
+              requests:
+                cpu: 100m
+                memory: 64Mi
+- path: /opt/cka/manifests/08-storage.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: storage.k8s.io/v1
+    kind: StorageClass
+    metadata:
+      name: cka-local
+    provisioner: kubernetes.io/no-provisioner
+    volumeBindingMode: Immediate
+    ---
+    apiVersion: v1
+    kind: PersistentVolume
+    metadata:
+      name: cka-local-pv
+    spec:
+      capacity:
+        storage: 2Gi
+      volumeMode: Filesystem
+      accessModes:
+      - ReadWriteOnce
+      persistentVolumeReclaimPolicy: Retain
+      storageClassName: cka-local
+      local:
+        path: /var/lib/cka/volumes/local-data
+      nodeAffinity:
+        required:
+          nodeSelectorTerms:
+          - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+              - k8s-worker-1
+    ---
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: pending-claim
+      namespace: cka-storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: cka-local
+      resources:
+        requests:
+          storage: 3Gi
+- path: /opt/cka/manifests/09-rbac.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: auditor
+      namespace: cka-rbac
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: auditor-role
+      namespace: cka-rbac
+    rules:
+    - apiGroups: ['']
+      resources: ['pods', 'configmaps', 'secrets']
+      verbs: ['get', 'list', 'watch', 'create', 'delete']
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: auditor-binding
+      namespace: cka-rbac
+    subjects:
+    - kind: ServiceAccount
+      name: auditor
+      namespace: cka-rbac
+    roleRef:
+      kind: Role
+      name: auditor-role
+      apiGroup: rbac.authorization.k8s.io
+- path: /opt/cka/manifests/10-custom-resource.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: lab.example.com/v1
+    kind: Widget
+    metadata:
+      name: demo-widget
+      namespace: cka-custom
+    spec:
+      message: running
+      replicas: 2
+- path: /opt/cka/fixtures/crd/widgets.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    metadata:
+      name: widgets.lab.example.com
+    spec:
+      group: lab.example.com
+      scope: Namespaced
+      names:
+        plural: widgets
+        singular: widget
+        kind: Widget
+        shortNames:
+        - wg
+      versions:
+      - name: v1
+        served: true
+        storage: true
+        schema:
+          openAPIV3Schema:
+            type: object
+            properties:
+              spec:
+                type: object
+                required: ['message']
+                properties:
+                  message:
+                    type: string
+                  replicas:
+                    type: integer
+                    minimum: 0
+- path: /opt/cka/fixtures/ingress/storefront-ingress.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: storefront-ingress
+      namespace: cka-network
+    spec:
+      ingressClassName: nginx
+      rules:
+      - host: storefront.cka.test
+        http:
+          paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: storefront-svc
+                port:
+                  number: 8080
+- path: /opt/cka/fixtures/kubeadm/upgrade-config.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: kubeadm.k8s.io/v1beta4
+    kind: UpgradeConfiguration
+    plan:
+      kubernetesVersion: v1.36.6
+      ignorePreflightErrors:
+      - Swap
+    apply:
+      kubernetesVersion: v1.36.6
+      dryRun: true
+- path: /opt/cka/kustomize/base/kustomization.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: kustomize.config.k8s.io/v1beta1
+    kind: Kustomization
+    resources:
+    - deployment.yaml
+    - service.yaml
+- path: /opt/cka/kustomize/base/deployment.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: overlay-web
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: overlay-web
+      template:
+        metadata:
+          labels:
+            app: overlay-web
+        spec:
+          containers:
+          - name: web
+            image: nginx:1.27-alpine
+            ports:
+            - containerPort: 80
+- path: /opt/cka/kustomize/base/service.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: overlay-web
+    spec:
+      selector:
+        app: overlay-web
+      ports:
+      - port: 80
+        targetPort: 80
+- path: /opt/cka/kustomize/overlays/staging/kustomization.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: kustomize.config.k8s.io/v1beta1
+    kind: Kustomization
+    namespace: cka-apps
+    resources:
+    - ../../base
+    replicas:
+    - name: overlay-web
+      count: 2
+    images:
+    - name: nginx
+      newTag: 1.27-alpine
+- path: /opt/cka/charts/cka-web/Chart.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v2
+    name: cka-web
+    description: Kubernetes administration training chart
+    type: application
+    version: 0.1.0
+    appVersion: '1.27'
+- path: /opt/cka/charts/cka-web/values.yaml
+  permissions: '0644'
+  content: |
+    replicaCount: 1
+    image:
+      repository: nginx
+      tag: 1.27-alpine
+    service:
+      port: 80
+- path: /opt/cka/charts/cka-web/templates/deployment.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-web
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      selector:
+        matchLabels:
+          app: {{ .Release.Name }}-web
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-web
+        spec:
+          containers:
+          - name: web
+            image: '{{ .Values.image.repository }}:{{ .Values.image.tag }}'
+            ports:
+            - containerPort: 80
+- path: /opt/cka/charts/cka-web/templates/service.yaml
+  permissions: '0644'
+  content: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: {{ .Release.Name }}-web
+    spec:
+      selector:
+        app: {{ .Release.Name }}-web
+      ports:
+      - port: {{ .Values.service.port }}
+        targetPort: 80
+- path: /opt/cka/README.txt
+  permissions: '0644'
+  content: |
+    CKA LAB
+    Preprovisioned Kubernetes resources: /opt/cka/manifests/
+    Staged artifacts: /opt/cka/fixtures/
+    Kustomize files: /opt/cka/kustomize/
+    Helm chart: /opt/cka/charts/
+    Provisioning: cks-lab.service
 - path: /usr/local/sbin/cks-node-install.sh
   permissions: '0755'
   content: |
@@ -733,6 +1374,7 @@ write_files:
     systemctl enable --now apparmor
     systemctl enable --now auditd
     mkdir -p /var/lib/kubelet/seccomp/profiles /etc/apparmor.d /opt/cks/logs
+    install -d -m 0755 /var/lib/cka/volumes/local-data
     cp /opt/cks/policies/04-seccomp-deny-chmod.json /var/lib/kubelet/seccomp/profiles/cks-deny-chmod.json
     cp /opt/cks/policies/05-apparmor-profile /etc/apparmor.d/cks-deny-write
     apparmor_parser -r /etc/apparmor.d/cks-deny-write
@@ -752,6 +1394,19 @@ write_files:
     systemctl is-active --quiet falco-modern-bpf.service
     command -v falco
     falco --version
+    # Helm CLI on the control-plane node for CKA exercises.
+    if [[ $(hostname -s) == k8s-control-1 ]]; then
+      HELM_VERSION=v3.19.0
+      HELM_SHA256=a7f81ce08007091b86d8bd696eb4d86b8d0f2e1b9f6c714be62f82f96a594496
+      if curl --retry 3 -fsSLo /tmp/helm.tar.gz "https://get.helm.sh/helm-$HELM_VERSION-linux-amd64.tar.gz" && printf '%s  %s\n' "$HELM_SHA256" /tmp/helm.tar.gz | sha256sum -c -; then
+        tar -xzf /tmp/helm.tar.gz -C /tmp
+        install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+        helm version --short
+      else
+        echo 'WARNING: Helm could not be installed; core cluster setup continues.' >&2
+      fi
+      rm -rf /tmp/linux-amd64 /tmp/helm.tar.gz
+    fi
     # Install Trivy
     install -m 0755 -d /usr/share/keyrings
     curl -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --batch --yes --dearmor -o /usr/share/keyrings/trivy.gpg
@@ -781,6 +1436,16 @@ write_files:
     until kubectl -n kube-system get ds cilium >/dev/null 2>&1; do sleep 10; done
     kubectl -n kube-system rollout status ds/cilium --timeout=10m
     kubectl apply -f /opt/cks/manifests/
+    kubectl apply -f /opt/cka/manifests/00-namespaces.yaml
+    kubectl label nodes k8s-worker-1 cka.lab/zone=west --overwrite
+    kubectl label nodes k8s-worker-2 cka.lab/zone=east --overwrite
+    kubectl apply -f /opt/cka/fixtures/crd/widgets.yaml
+    kubectl wait --for=condition=Established crd/widgets.lab.example.com --timeout=90s
+    kubectl apply -f /opt/cka/manifests/
+    # Stage broken control-plane and node configuration off the live manifest paths.
+    install -d /opt/cka/fixtures/control-plane /opt/cka/fixtures/kubelet
+    sed 's@/etc/kubernetes/scheduler.conf@/etc/kubernetes/missing-scheduler.conf@g' /etc/kubernetes/manifests/kube-scheduler.yaml > /opt/cka/fixtures/control-plane/kube-scheduler-broken.yaml
+    sed 's/cgroupDriver: systemd/cgroupDriver: invalid-driver/g' /var/lib/kubelet/config.yaml > /opt/cka/fixtures/kubelet/config-broken.yaml
 - path: /etc/systemd/system/cks-lab.service
   permissions: '0644'
   content: |
