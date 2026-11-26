@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: namespace-quota
+  namespace: cka-resources
+spec:
+  hard:
+    pods: '3'
+    requests.cpu: '500m'
+    requests.memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quota-web
+  namespace: cka-resources
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: quota-web
+  template:
+    metadata:
+      labels:
+        app: quota-web
+    spec:
+      containers:
+      - name: web
+        image: nginx:1.27-alpine
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi

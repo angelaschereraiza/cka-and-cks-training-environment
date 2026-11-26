@@ -1,0 +1,8 @@
+apiVersion: lab.example.com/v1
+kind: Widget
+metadata:
+  name: demo-widget
+  namespace: cka-custom
+spec:
+  message: running
+  replicas: 2

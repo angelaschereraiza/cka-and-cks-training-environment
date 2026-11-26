@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cks-falco-lab
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: suspicious-app
+  namespace: cks-falco-lab
+spec:
+  containers:
+  - name: toolbox
+    image: alpine:3.21
+    command: ["sh", "-c", "sleep 360000"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: trusted-maintenance
+  namespace: cks-falco-lab
+spec:
+  containers:
+  - name: toolbox
+    image: alpine:3.21
+    command: ["sh", "-c", "sleep 360000"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: network-client
+  namespace: cks-falco-lab
+spec:
+  containers:
+  - name: toolbox
+    image: alpine:3.21
+    command: ["sh", "-c", "sleep 360000"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: privileged-target
+  namespace: cks-falco-lab
+spec:
+  containers:
+  - name: toolbox
+    image: alpine:3.21
+    command: ["sh", "-c", "sleep 360000"]
+    securityContext:
+      privileged: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: incident-evidence
+  namespace: cks-falco-lab
+data:
+  report.txt: "Incident test data"

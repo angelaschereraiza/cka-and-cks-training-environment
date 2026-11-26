@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cks-seccomp
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: seccomp-target
+  namespace: cks-seccomp
+spec:
+  containers:
+    - name: target
+      image: busybox:1.36
+      command: ["sh", "-c", "sleep 360000"]

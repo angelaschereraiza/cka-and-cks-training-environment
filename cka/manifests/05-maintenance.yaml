@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maintenance-web
+  namespace: cka-maintenance
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: maintenance-web
+  template:
+    metadata:
+      labels:
+        app: maintenance-web
+    spec:
+      containers:
+      - name: web
+        image: nginx:1.27-alpine
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: maintenance-budget
+  namespace: cka-maintenance
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: maintenance-web

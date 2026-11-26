@@ -1,0 +1,9 @@
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: UpgradeConfiguration
+plan:
+  kubernetesVersion: v1.36.6
+  ignorePreflightErrors:
+  - Swap
+apply:
+  kubernetesVersion: v1.36.6
+  dryRun: true

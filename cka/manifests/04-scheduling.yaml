@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: placement-app
+  namespace: cka-scheduling
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: placement-app
+  template:
+    metadata:
+      labels:
+        app: placement-app
+    spec:
+      nodeSelector:
+        cka.lab/zone: central
+      containers:
+      - name: app
+        image: nginx:1.27-alpine
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduling-web
+  namespace: cka-scheduling
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: scheduling-web
+  template:
+    metadata:
+      labels:
+        app: scheduling-web
+    spec:
+      containers:
+      - name: web
+        image: nginx:1.27-alpine

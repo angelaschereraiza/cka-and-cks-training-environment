@@ -66,7 +66,6 @@ resource "hcloud_server" "kubernetes" {
   ssh_keys     = [var.ssh_key_name]
   firewall_ids = [hcloud_firewall.kubernetes.id]
   user_data = templatefile("${path.module}/cloud-init.yaml", {
-    node_ip        = each.value
     ssh_public_key = trimspace(file(pathexpand(var.ssh_public_key_path)))
   })
   public_net {
@@ -85,7 +84,13 @@ resource "terraform_data" "cluster_bootstrap" {
   triggers_replace = concat(
     [for name in sort(keys(local.nodes)) : hcloud_server.kubernetes[name].id],
     [for name in sort(keys(local.nodes)) : hcloud_server_network.kubernetes[name].mac_address],
-    [filesha256("${path.module}/bootstrap-cluster.sh")]
+    [filesha256("${path.module}/bootstrap-cluster.sh")],
+    [for file_path in sort(tolist(setunion(
+      fileset(path.module, "cka/**"),
+      fileset(path.module, "cks/**"),
+      fileset(path.module, "scripts/**"),
+      fileset(path.module, "systemd/**")
+    ))) : "${file_path}:${filesha256("${path.module}/${file_path}")}"]
   )
   depends_on = [hcloud_server_network.kubernetes, hcloud_firewall.kubernetes]
   provisioner "local-exec" {

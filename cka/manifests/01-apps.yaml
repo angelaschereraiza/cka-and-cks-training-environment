@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rollout-web
+  namespace: cka-apps
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rollout-web
+  template:
+    metadata:
+      labels:
+        app: rollout-web
+    spec:
+      containers:
+      - name: web
+        image: nginx:1.27-alpine
+        ports:
+        - name: http
+          containerPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: health-web
+  namespace: cka-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: health-web
+  template:
+    metadata:
+      labels:
+        app: health-web
+    spec:
+      containers:
+      - name: web
+        image: nginx:1.27-alpine
+        ports:
+        - name: http
+          containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 2
+          periodSeconds: 5
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cleanup
+  namespace: cka-apps
+spec:
+  schedule: '*/30 * * * *'
+  suspend: true
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: cleanup
+            image: busybox:1.36
+            command: ['sh', '-c', 'date; echo cleanup complete']

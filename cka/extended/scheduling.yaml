@@ -1,0 +1,107 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: batch-web
+  namespace: cka-placement
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: batch-web
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: web
+        image: nginx:1.27-alpine
+        resources:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+      nodeSelector:
+        cka.lab/zone: north
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: distributed-web
+  namespace: cka-placement
+spec:
+  replicas: 2
+  selector:
+    matchLabels: &id001
+      app: distributed-web
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: web
+        image: nginx:1.27-alpine
+        resources:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: cka-diagnostics
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: worker
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: web
+        image: busybox:1.36
+        resources:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+        command:
+        - sh
+        - -c
+        - exit 2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: probe-web
+  namespace: cka-diagnostics
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: probe-web
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      containers:
+      - name: web
+        image: nginx:1.27-alpine
+        resources:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8081
+          periodSeconds: 5

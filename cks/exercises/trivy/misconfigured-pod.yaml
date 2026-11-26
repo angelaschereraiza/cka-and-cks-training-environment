@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: insecure-build-agent
+  namespace: cks-pod-security
+spec:
+  hostPID: true
+  hostNetwork: true
+  containers:
+  - name: agent
+    image: alpine:3.21
+    command: ["sh", "-c", "sleep 360000"]
+    securityContext:
+      privileged: true
+      allowPrivilegeEscalation: true
+      runAsUser: 0
+      capabilities:
+        add: ["NET_ADMIN", "NET_RAW"]

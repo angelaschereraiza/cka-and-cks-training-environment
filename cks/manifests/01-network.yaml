@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: database
+  namespace: production
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: database}
+  template:
+    metadata:
+      labels: {app: database}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_PASSWORD
+              value: cks-lab-only
+          ports:
+            - containerPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: production
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {role: backend}
+  template:
+    metadata:
+      labels: {role: backend}
+    spec:
+      containers:
+        - name: client
+          image: postgres:16-alpine
+          command: ["sh", "-c", "sleep infinity"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unauthorized-client
+  namespace: production
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {role: frontend}
+  template:
+    metadata:
+      labels: {role: frontend}
+    spec:
+      containers:
+        - name: client
+          image: postgres:16-alpine
+          command: ["sh", "-c", "sleep infinity"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: production
+spec:
+  selector: {app: database}
+  ports:
+    - port: 5432
+      targetPort: 5432

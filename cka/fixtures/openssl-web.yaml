@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tls-web
+  namespace: cka-openssl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tls-web
+  template:
+    metadata:
+      labels:
+        app: tls-web
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.27-alpine
+        ports:
+        - containerPort: 443
+        volumeMounts:
+        - name: tls
+          mountPath: /tls
+          readOnly: true
+        - name: config
+          mountPath: /etc/nginx/conf.d
+          readOnly: true
+      volumes:
+      - name: tls
+        secret:
+          secretName: web-tls
+      - name: config
+        configMap:
+          name: web-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tls-web
+  namespace: cka-openssl
+spec:
+  selector:
+    app: tls-web
+  ports:
+  - port: 443
+    targetPort: 443

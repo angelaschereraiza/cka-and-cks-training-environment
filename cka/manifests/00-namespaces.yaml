@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-apps
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-config
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-network
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-scheduling
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-storage
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-maintenance
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-troubleshooting
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-resources
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-rbac
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cka-custom

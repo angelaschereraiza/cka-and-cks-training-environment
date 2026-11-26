@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cks-net-data
+  labels:
+    environment: internal
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cks-net-trusted
+  labels:
+    access: trusted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cks-net-untrusted
+  labels:
+    access: untrusted
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datastore
+  namespace: cks-net-data
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: datastore}
+  template:
+    metadata:
+      labels: {app: datastore}
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16-alpine
+        env:
+        - name: POSTGRES_PASSWORD
+          value: cks-training-only
+        ports:
+        - containerPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datastore
+  namespace: cks-net-data
+spec:
+  selector: {app: datastore}
+  ports:
+  - name: postgres
+    protocol: TCP
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trusted-client
+  namespace: cks-net-trusted
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {role: app-client}
+  template:
+    metadata:
+      labels: {role: app-client}
+    spec:
+      containers:
+      - name: client
+        image: postgres:16-alpine
+        command: ["sh", "-c", "sleep infinity"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: untrusted-client
+  namespace: cks-net-untrusted
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {role: app-client}
+  template:
+    metadata:
+      labels: {role: app-client}
+    spec:
+      containers:
+      - name: client
+        image: postgres:16-alpine
+        command: ["sh", "-c", "sleep infinity"]

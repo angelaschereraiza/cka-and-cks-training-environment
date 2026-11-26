@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cks-service-account
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: log-reader
+  namespace: cks-service-account
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: log-access
+  namespace: cks-service-account
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "secrets"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: log-reader-binding
+  namespace: cks-service-account
+subjects:
+- kind: ServiceAccount
+  name: log-reader
+  namespace: cks-service-account
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: log-access
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: token-target
+  namespace: cks-service-account
+spec:
+  serviceAccountName: log-reader
+  containers:
+  - name: target
+    image: busybox:1.36
+    command: ["sh", "-c", "sleep 360000"]

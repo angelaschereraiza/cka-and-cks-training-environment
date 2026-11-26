@@ -1,0 +1,11 @@
+[Unit]
+Description=Provision CKS practice resources
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cks-lab-apply.sh
+RemainAfterExit=yes
+TimeoutStartSec=0
+[Install]
+WantedBy=multi-user.target

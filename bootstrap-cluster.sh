@@ -4,6 +4,7 @@ if (( $# != 10 )); then
   echo "Usage: $0 SSH_KEY CONTROL_IP WORKER1_IP WORKER2_IP CONTROL_PRIVATE_IP CONTROL_MAC WORKER1_PRIVATE_IP WORKER1_MAC WORKER2_PRIVATE_IP WORKER2_MAC" >&2
   exit 2
 fi
+REPO_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 KEY=$1; CONTROL=$2; WORKER1=$3; WORKER2=$4
 CONTROL_PRIVATE_IP=$5; CONTROL_MAC=$6
 WORKER1_PRIVATE_IP=$7; WORKER1_MAC=$8
@@ -59,13 +60,25 @@ wait_ssh() {
   done
   echo "SSH unavailable: $host" >&2; return 1
 }
-for host in "$CONTROL" "$WORKER1" "$WORKER2"; do
+# Transfer tracked lab sources directly over SSH; no Git credentials on nodes.
+for entry in "$CONTROL:$CONTROL_PRIVATE_IP" "$WORKER1:$WORKER1_PRIVATE_IP" "$WORKER2:$WORKER2_PRIVATE_IP"; do
+  host=${entry%%:*}; node_ip=${entry#*:}
   wait_ssh "$host"
   echo "Waiting for cloud-init: $host"
-  root "$host" 'cloud-init status --wait' || { root "$host" 'tail -100 /var/log/cks-provision.log || true'; exit 1; }
-  root "$host" 'test -f /var/log/cks-provision.log && command -v kubeadm && command -v crictl && systemctl is-active --quiet containerd && systemctl is-active --quiet falco-modern-bpf.service && test -f /etc/falco/falco_rules.local.yaml'
+  root "$host" 'cloud-init status --wait'
+  echo "Uploading lab sources: $host"
+  tar -C "$REPO_DIR" -czf - cka cks | run "$host" 'sudo -n tar --no-same-owner -xzf - -C /opt'
+  for script in "$REPO_DIR"/scripts/*.sh; do
+    filename=$(basename "$script")
+    run "$host" "sudo -n tee /usr/local/sbin/$filename >/dev/null" < "$script"
+    root "$host" "chmod 755 /usr/local/sbin/$filename"
+    root "$host" "test -x /usr/local/sbin/$filename"
+  done
+  tar -C "$REPO_DIR/systemd" -czf - . | run "$host" 'sudo -n tar --no-same-owner -xzf - -C /etc/systemd/system'
+  root "$host" 'systemctl daemon-reload'
+  root "$host" "test -f /var/lib/cks-node-install.complete || /usr/local/sbin/cks-node-install.sh '$node_ip'" || { root "$host" 'tail -100 /var/log/cks-provision.log || true'; exit 1; }
+  root "$host" 'command -v kubeadm && command -v crictl && systemctl is-active --quiet containerd && systemctl is-active --quiet falco-modern-bpf.service && test -f /etc/falco/falco_rules.local.yaml'
 done
-root "$CONTROL" 'command -v etcdctl && etcdctl version'
 for entry in "$CONTROL:$CONTROL_PRIVATE_IP:$CONTROL_MAC" "$WORKER1:$WORKER1_PRIVATE_IP:$WORKER1_MAC" "$WORKER2:$WORKER2_PRIVATE_IP:$WORKER2_MAC"; do
   host=${entry%%:*}; network=${entry#*:}; expected=${network%%:*}; mac=${network#*:}
   configure_private_network "$host" "$expected" "$mac"
@@ -74,6 +87,21 @@ done
 if ! root "$CONTROL" 'test -s /etc/kubernetes/admin.conf'; then
   root "$CONTROL" 'kubeadm init --apiserver-advertise-address=10.10.0.10 --pod-network-cidr=10.244.0.0/16'
 fi
+root "$CONTROL" 'install -d -m 0700 -o student -g student /home/student/.kube; cp /etc/kubernetes/admin.conf /home/student/.kube/config; chown student:student /home/student/.kube/config; chmod 600 /home/student/.kube/config'
+for host in "$CONTROL" "$WORKER1" "$WORKER2"; do
+  wait_for_api_from_node "$host"
+done
+if ! root "$CONTROL" 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system get ds cilium >/dev/null 2>&1'; then
+  echo 'Installing Cilium...'
+  root "$CONTROL" 'set -e; version=$(curl -fsSL https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt); arch=amd64; [ "$(uname -m)" = aarch64 ] && arch=arm64; cd /tmp; curl -fL -O "https://github.com/cilium/cilium-cli/releases/download/${version}/cilium-linux-${arch}.tar.gz"; curl -fL -O "https://github.com/cilium/cilium-cli/releases/download/${version}/cilium-linux-${arch}.tar.gz.sha256sum"; sha256sum --check "cilium-linux-${arch}.tar.gz.sha256sum"; tar xzf "cilium-linux-${arch}.tar.gz" -C /usr/local/bin; KUBECONFIG=/etc/kubernetes/admin.conf cilium install --set ipam.mode=kubernetes'
+fi
+JOIN=$(root "$CONTROL" 'kubeadm token create --print-join-command')
+for worker in "$WORKER1" "$WORKER2"; do
+  if root "$worker" 'test -f /etc/kubernetes/kubelet.conf'; then echo "Already joined: $worker"; else root "$worker" "$JOIN"; fi
+done
+root "$CONTROL" 'KUBECONFIG=/etc/kubernetes/admin.conf kubectl -n kube-system rollout status ds/cilium --timeout=10m'
+root "$CONTROL" 'KUBECONFIG=/etc/kubernetes/admin.conf kubectl wait --for=condition=Ready nodes --all --timeout=10m'
+root "$CONTROL" 'systemctl start cks-lab.service && systemctl is-active cks-lab.service'
 echo 'Waiting for etcd...'
 
 root "$CONTROL" '
@@ -92,20 +120,5 @@ root "$CONTROL" '
   echo "etcd health check failed" >&2
   exit 1
 '
-root "$CONTROL" 'install -d -m 0700 -o student -g student /home/student/.kube; cp /etc/kubernetes/admin.conf /home/student/.kube/config; chown student:student /home/student/.kube/config; chmod 600 /home/student/.kube/config'
-for host in "$CONTROL" "$WORKER1" "$WORKER2"; do
-  wait_for_api_from_node "$host"
-done
-if ! root "$CONTROL" 'kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system get ds cilium >/dev/null 2>&1'; then
-  echo 'Installing Cilium...'
-  root "$CONTROL" 'set -e; version=$(curl -fsSL https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt); arch=amd64; [ "$(uname -m)" = aarch64 ] && arch=arm64; cd /tmp; curl -fL -O "https://github.com/cilium/cilium-cli/releases/download/${version}/cilium-linux-${arch}.tar.gz"; curl -fL -O "https://github.com/cilium/cilium-cli/releases/download/${version}/cilium-linux-${arch}.tar.gz.sha256sum"; sha256sum --check "cilium-linux-${arch}.tar.gz.sha256sum"; tar xzf "cilium-linux-${arch}.tar.gz" -C /usr/local/bin; KUBECONFIG=/etc/kubernetes/admin.conf cilium install --set ipam.mode=kubernetes'
-fi
-JOIN=$(root "$CONTROL" 'kubeadm token create --print-join-command')
-for worker in "$WORKER1" "$WORKER2"; do
-  if root "$worker" 'test -f /etc/kubernetes/kubelet.conf'; then echo "Already joined: $worker"; else root "$worker" "$JOIN"; fi
-done
-root "$CONTROL" 'KUBECONFIG=/etc/kubernetes/admin.conf kubectl -n kube-system rollout status ds/cilium --timeout=10m'
-root "$CONTROL" 'KUBECONFIG=/etc/kubernetes/admin.conf kubectl wait --for=condition=Ready nodes --all --timeout=10m'
-root "$CONTROL" 'systemctl start cks-lab.service && systemctl is-active cks-lab.service'
 run "$CONTROL" 'kubectl get nodes -o wide; kubectl -n cks-falco-lab get pods -o wide; kubectl get pods -A'
 echo 'CKS cluster bootstrap completed.'

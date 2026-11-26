@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-issue
+  namespace: cka-troubleshooting
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: image-issue
+  template:
+    metadata:
+      labels:
+        app: image-issue
+    spec:
+      containers:
+      - name: web
+        image: nginx:1.27-alpinee
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crash-issue
+  namespace: cka-troubleshooting
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crash-issue
+  template:
+    metadata:
+      labels:
+        app: crash-issue
+    spec:
+      containers:
+      - name: worker
+        image: busybox:1.36
+        command: ['sh', '-c', 'echo worker booted; exit 1']
